@@ -1,0 +1,10 @@
+{
+    "jsonrpc":"2.0",
+    "method":"eth_sendTransaction",
+    "params":[{
+        "from": "from_placeholder",
+        "to": "to_placeholder",
+        "value": "value_placeholder"
+    }],
+    "id":1
+}

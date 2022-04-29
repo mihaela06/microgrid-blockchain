@@ -1,0 +1,6 @@
+{
+    "method": "miner_setEtherbase",
+    "params": [
+        "address_placeholder"
+    ]
+}

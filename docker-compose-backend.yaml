@@ -1,0 +1,18 @@
+
+services:
+  smart-meter:
+    hostname: smart-meter
+    image: smart-meter
+    build:
+      context: smart-meter
+      args:
+        - DATA_FILE=${DATA_FILE}
+  backend-server:
+    hostname: backend-server
+    image: backend-server
+    environment:
+        - GETH_HOST=${GETH_HOST}
+    build:
+      context: backend-server
+      args:
+        - GETH_HOST=${GETH_HOST}

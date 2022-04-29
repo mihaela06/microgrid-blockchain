@@ -1,0 +1,39 @@
+
+services:
+  geth:
+    hostname: geth
+    env_file:
+      - .env
+    image: geth-client
+    build:
+      context: geth-client
+    command:
+      --networkid=${NETWORK_ID}
+      --netrestrict=${PROSUMERS_NET}
+      --http 
+      --http.api db,eth,net,web3,admin,personal,miner,signer:insecure_unlock_protect
+      --http.corsdomain="*" 
+      --http.addr="0.0.0.0" 
+      --http.vhosts=* 
+      --ws 
+      --ws.api db,eth,net,web3,admin,personal,miner 
+      --ws.origins="*"  
+      --ws.addr="0.0.0.0"
+      --password /tmp/password.txt 
+      --allow-insecure-unlock 
+      --nat=extip:${GETH_IP}
+      --vmodule=p2p=5,eth=1
+      --nodiscover
+      # --nodekey=node.key
+    networks:
+      prosumer-subnet:
+      prosumers-net:
+
+networks:
+  prosumer-subnet:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: ${PROSUMER_SUBNET}
+  prosumers-net:
+    external: true

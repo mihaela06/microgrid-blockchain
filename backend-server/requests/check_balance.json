@@ -1,0 +1,9 @@
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "eth_getBalance",
+    "params": [
+        "address_placeholder",
+        "latest"
+    ]
+}
