@@ -1,0 +1,8 @@
+{
+    "method": "personal_unlockAccount",
+    "params": [
+        "address_placeholder",
+        "password_placeholder",
+        0
+    ]
+}
