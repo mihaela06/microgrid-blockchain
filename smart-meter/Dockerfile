@@ -12,4 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt 2> /dev/null
 
 COPY smart-meter.py .
 
-CMD [ "python", "smart-meter.py" ]
+ARG BACKEND_HOST
+
+RUN sed -i "s/host_placeholder/${BACKEND_HOST}/" smart-meter.py
+
+CMD ["python", "smart-meter.py"]
