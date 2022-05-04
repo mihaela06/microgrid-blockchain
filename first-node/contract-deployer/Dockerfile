@@ -6,11 +6,6 @@ RUN npm install -g truffle
 
 RUN truffle init
 
-COPY . .
+ENV GETH_HOST=balance_node
 
-ARG GETH_HOST=balance_node
-
-RUN sed -i "s/\"host_dummy\"/\"${GETH_HOST}\"/" truffle-config.js
-
-ENTRYPOINT [ "/bin/sh" ]
-CMD [ "./entry.sh" ]
+CMD [ "/bin/sh", "./entry.sh" ]

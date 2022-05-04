@@ -146,17 +146,22 @@ done
 
 # Deploy main contract for grid balance
 
-docker build first-node/contract-deployer -t contract-deployer --build-arg GETH_HOST=balance_node
+export WORKDIR="$( cd "$( dirname "$0" )" && pwd )"
 
-docker container run --name contract-deployer --network "$PROSUMERS_NET_NAME" contract-deployer
+docker build first-node/contract-deployer -t contract-deployer
+
+docker container run --name contract-deployer -v "$WORKDIR"/first-node/contract-deployer:/app --network "$PROSUMERS_NET_NAME" -e GETH_HOST=balance_node contract-deployer
+
+cp -r "$WORKDIR"/first-node/contract-deployer/build/contracts "$WORKDIR"/backend-server/build
 
 # Register prosumer
 
-docker image rm backend-server
+# docker image rm backend-server
 
 for ((i = 1 ; i <= n ; i++)); do
   mod=$(($((i % 3)) + 1))
   export DATA_FILE="$mod.csv"
+  export BACKEND_HOST="prosumer${i}_backend-server_1"
   export GETH_HOST="prosumer${i}_geth_1" 
   echo $GETH_HOST
   docker-compose -f docker-compose-backend.yaml -p prosumer"$i" build
@@ -164,4 +169,6 @@ for ((i = 1 ; i <= n ; i++)); do
   docker network connect "prosumer${i}_prosumer-subnet" "prosumer${i}_smart-meter_1"
   docker network connect "prosumer${i}_prosumer-subnet" "prosumer${i}_backend-server_1"
   docker exec "prosumer${i}_backend-server_1" node prosumer_registration.js
+  export PROSUMER_CONTRACT_ADDRESS=$(docker exec prosumer${i}_backend-server_1 cat /app/contract_address.txt)
+  echo $PROSUMER_CONTRACT_ADDRESS
 done
