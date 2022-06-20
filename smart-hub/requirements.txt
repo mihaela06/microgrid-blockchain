@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+black
+dnspython
+pymongo
+starlette
+websockets
+appdirs
+motor
+fastapi_utils
+beanie

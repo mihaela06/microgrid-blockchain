@@ -1,0 +1,10 @@
+simulation/appliances
+simulation/background
+simulation/weather
+simulation/.apikey
+simulation/__pycache__
+smart-hub/apps/__pycache__
+smart-hub/apps/smart_hub/__pycache__
+smart-hub/apps/smart_hub/routers/__pycache__
+ex.py
+mongo/keyfile

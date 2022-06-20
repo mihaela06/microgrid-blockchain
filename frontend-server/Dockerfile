@@ -1,15 +1,11 @@
-FROM node
+FROM python:3.9
 
-ENV NODE_ENV=production
+WORKDIR /code
 
-WORKDIR /app
+COPY ./requirements.txt /code/requirements.txt
 
-RUN apt-get update
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-COPY ["package.json", "package-lock.json*", "./"]
+COPY . /code/app
 
-RUN npm install --production
-
-COPY . .
-
-CMD [ "node", "server.js" ]
+CMD ["python", "/code/app/server.py"]

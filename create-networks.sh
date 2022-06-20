@@ -152,7 +152,7 @@ docker build first-node/contract-deployer -t contract-deployer
 
 docker container run --name contract-deployer -v "$WORKDIR"/first-node/contract-deployer:/app --network "$PROSUMERS_NET_NAME" -e GETH_HOST=balance_node contract-deployer
 
-cp -r "$WORKDIR"/first-node/contract-deployer/build/contracts "$WORKDIR"/backend-server/build
+cp -r "$WORKDIR"/first-node/contract-deployer/build/contracts/ "$WORKDIR"/backend-server/build/
 
 # Register prosumer
 

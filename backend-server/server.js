@@ -38,12 +38,12 @@ app.post("/register_value", (req, res) => {
                     console.log("default account", accounts[0])
                     await prosumerContract.methods
                         .registerValue(req.body.value, index)
-                        .send({ from: accounts[0] })
+                        .send({ from: accounts[0], gas: 40000 })
                         .on('transactionHash', function (hash) {
                             console.log(req.body.value, hash);
                         });
 
-                    const registeredValue = await prosumerContract.methods.getValue(index).call();
+                    const registeredValue = await prosumerContract.methods.getValue(index).call({ from: accounts[0] });
                     res.send({ registeredValue: registeredValue });
                     index++;
                     if (index == 2880)
@@ -52,12 +52,14 @@ app.post("/register_value", (req, res) => {
 
                 } catch (error) {
                     console.log(error);
+                    res.send({ registeredValue: -1 });
                 }
             };
 
             registerValue();
         } catch (error) {
             console.error(error);
+            res.send({ registeredValue: -1 });
         }
     } catch (error) {
         console.log(error);
