@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Body, Request, HTTPException, status
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse, Response
 
-from ..models import BATTERIES_DB, Battery, UpdateBattery, Program, UpdateProgram, Task, BATTERIES_DB, TASKS_DB, PROGRAMS_DB, State
+from ..models import BATTERIES_DB, Battery, UpdateBattery
 
 router = APIRouter()
 

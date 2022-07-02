@@ -1,0 +1,7 @@
+pandas
+apscheduler
+motor
+sqlalchemy
+beanie
+requests
+fastapi

@@ -1,0 +1,6 @@
+
+--- 
+http.host: "0.0.0.0" 
+xpack.monitoring.elasticsearch.hosts: [ "http://elastic_search:9200" ] 
+
+xpack.monitoring.enabled: true 

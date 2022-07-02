@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Body, Request, HTTPException, status
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse, Response
 
-from ..models import Appliance, UpdateAppliance, Program, UpdateProgram, Task, APPLIANCES_DB, TASKS_DB, PROGRAMS_DB, State
+from ..models import (APPLIANCES_DB, PROGRAMS_DB, TASKS_DB, Appliance, Program,
+                      State, Task, UpdateAppliance, UpdateProgram)
 
 router = APIRouter()
 
@@ -455,6 +456,31 @@ async def cancel_task(name: str, request: Request):
 
     raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
                         detail=f"Appliance {name} has no task started")
+
+
+@router.delete("/{name}/tasks/{id}", response_description="Cancel task")
+async def cancel_task(name: str, id: str, request: Request):
+    appliance = await request.app.mongodb[APPLIANCES_DB].find_one({"name": name})
+
+    if appliance["currentTask"] == id:
+        appliance["currentTask"] = None
+        update_result = await request.app.mongodb[APPLIANCES_DB].update_one(
+            {"name": name}, {"$set": appliance}
+        )
+
+    task = await request.app.mongodb[TASKS_DB].find_one({"_id": id})
+
+    task["state"] = State.Canceled.value
+
+    update_result = await request.app.mongodb[TASKS_DB].update_one(
+        {"_id": task["_id"]}, {"$set": task}
+    )
+
+    if update_result.modified_count == 1:
+        if (
+            updated_task := await request.app.mongodb[TASKS_DB].find_one({"_id": task["_id"]})
+        ) is not None:
+            return updated_task
 
 
 @router.get("/{name}/tasks", response_description="List all appliance tasks")

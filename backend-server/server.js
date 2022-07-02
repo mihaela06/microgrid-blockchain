@@ -11,12 +11,10 @@ app.use(express.urlencoded({ extended: true }));
 app.listen(port, () => console.log(`Listening on port ${port}`));
 console.log(process.env.GETH_HOST)
 
-index = 0;
-
 app.post("/register_value", (req, res) => {
     let prosumerContractAddress = null;
     try {
-        prosumerContractAddress = fs.readFileSync('/app/contract_address.txt', 'utf8');
+        prosumerContractAddress = process.env.PROSUMER_CONTRACT;
         console.log("prosumerContractAddress", prosumerContractAddress);
 
         try {
@@ -37,19 +35,12 @@ app.post("/register_value", (req, res) => {
                     const accounts = await web3.eth.getAccounts();
                     console.log("default account", accounts[0])
                     await prosumerContract.methods
-                        .registerValue(req.body.value, index)
-                        .send({ from: accounts[0], gas: 40000 })
+                        .registerValue(req.body.value)
+                        .send({ from: accounts[0], gas: 10000000 })
                         .on('transactionHash', function (hash) {
                             console.log(req.body.value, hash);
                         });
-
-                    const registeredValue = await prosumerContract.methods.getValue(index).call({ from: accounts[0] });
-                    res.send({ registeredValue: registeredValue });
-                    index++;
-                    if (index == 2880)
-                        index = 0;
-
-
+                    res.send({ registeredValue: req.body.value });
                 } catch (error) {
                     console.log(error);
                     res.send({ registeredValue: -1 });
@@ -64,6 +55,57 @@ app.post("/register_value", (req, res) => {
     } catch (error) {
         console.log(error);
         res.send({ registeredValue: -1 });
+    }
+
+});
+
+app.post("/register_baseline", (req, res) => {
+    let prosumerContractAddress = null;
+    try {
+        prosumerContractAddress = process.env.PROSUMER_CONTRACT;
+        console.log("prosumerContractAddress", prosumerContractAddress);
+
+        try {
+            registerBaseline = async () => {
+                try {
+                    let web3 = new Web3(
+                        new Web3.providers.HttpProvider("http://" + process.env.GETH_HOST + ":8545")
+                    );
+
+                    const prosumerContract = new web3.eth.Contract(
+                        ProsumerContract.abi,
+                        prosumerContractAddress
+                    );
+                    let baseline = []
+                    for (const v of req.body.baseline) {
+                        baseline.push(parseInt(v))
+                    }
+                    console.log("baseline: ", baseline, baseline.length);
+
+                    const accounts = await web3.eth.getAccounts();
+                    console.log("default account", accounts[0])
+                    await prosumerContract.methods
+                        .actualizeBaseline(baseline, baseline.length)
+                        .send({ from: accounts[0], gas: 10000000 })
+                        .on('transactionHash', function (hash) {
+                            console.log(baseline, hash);
+                        });
+
+                    res.send({ status: "succes" });
+                } catch (error) {
+                    console.log(error);
+                    res.send({ status: "error" });
+                }
+            };
+
+            registerBaseline();
+        } catch (error) {
+            console.error(error);
+            res.send({ status: "error" });
+        }
+    } catch (error) {
+        console.log(error);
+        res.send({ status: "error" });
     }
 
 });

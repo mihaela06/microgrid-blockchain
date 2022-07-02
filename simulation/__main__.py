@@ -1,50 +1,64 @@
 import asyncio
+import calendar
 import datetime
 import os
 import random
-import calendar
+import time
 
 import pandas as pd
+import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi.encoders import jsonable_encoder
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from ..apps.smart_hub.models import (APPLIANCES_DB, BATTERIES_DB, DR_DB,
-                                     PROGRAMS_DB, TASKS_DB, State)
-
-THRESHOLD = 0.1
-MIDNIGHT_TIMESTAMP = 1555286400  # 15.04.2019
-RANDOM_SEED = 42
-PROSUMER_NO = 10
+from .config import (BATCH_SIZE, FREQ, START_TIMESTAMP, PROSUMER_NO,
+                     RANDOM_SEED, THRESHOLD, DYNAMIC)
+from .generation import generate_requests
+from .models import (APPLIANCES_DB, BATTERIES_DB, DR_DB, ENERGY_DATA_DB,
+                     PROGRAMS_DB, TASKS_DB, EnergyData, State)
 
 SURPLUS = 1
 SHORTAGE = -1
 IN_BOUNDS = 0
 BACKGROUND_FOLDER = "background"
+BASELINE_FOLDER = "baseline"
+
+# TODO uncomment dynamic
+# if DYNAMIC:
+#     BASELINE_FOLDER = "baseline"
+# else:
+#     BASELINE_FOLDER = "scenario/baseline"
 
 
 random.seed(RANDOM_SEED)
 
 mongodb_client = AsyncIOMotorClient(
-    "mongodb+srv://admin:lXBtOnV2SELj3qkR@cluster0.ke5tapi.mongodb.net/bd?retryWrites=true&w=majority&uuidRepresentation=standard")
-mongodb = mongodb_client["bd"]
+    "mongodb://root:password@"+os.environ.get("MONGO_HOST")+":27017/?retryWrites=true&w=majority&uuidRepresentation=standard")
+mongodb = mongodb_client["hub"]
 
 task_file = {}
 background_df = None
+baseline_df = None
 time_counter = 0
+data = dict()
+headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+BACKEND_URL = "http://" + os.environ.get("BACKEND_HOST") + ":5000"
 
 
 def read_background():
     global background_df
     year = datetime.date.fromtimestamp(
-        MIDNIGHT_TIMESTAMP).strftime('%Y')
+        START_TIMESTAMP).strftime('%Y')
     month = datetime.date.fromtimestamp(
-        MIDNIGHT_TIMESTAMP).strftime('%m')
+        START_TIMESTAMP).strftime('%m')
     day = datetime.date.fromtimestamp(
-        MIDNIGHT_TIMESTAMP).strftime('%d')
+        START_TIMESTAMP).strftime('%d')
     path = os.path.join(os.path.dirname(
         os.path.realpath(__file__)), BACKGROUND_FOLDER)
     year_path = os.path.join(path, year)
     month_path = os.path.join(year_path, month)
+
     background_df = pd.read_csv(os.path.join(
         month_path, str(PROSUMER_NO) + ".csv"))
     background_df['timestamp'] = pd.to_datetime(
@@ -56,7 +70,34 @@ def read_background():
     background_df = background_df.loc[(background_df['timestamp'] >= start)
                                       & (background_df['timestamp'] < stop)]
     background_df = background_df.set_index('timestamp')
-    background_df = background_df.resample('1S').ffill()
+    background_df = background_df.resample('%dS' % FREQ).ffill()
+
+
+def read_baseline():
+    global baseline_df
+    year = datetime.date.fromtimestamp(
+        START_TIMESTAMP).strftime('%Y')
+    month = datetime.date.fromtimestamp(
+        START_TIMESTAMP).strftime('%m')
+    day = datetime.date.fromtimestamp(
+        START_TIMESTAMP).strftime('%d')
+    path = os.path.join(os.path.dirname(
+        os.path.realpath(__file__)), BASELINE_FOLDER)
+    year_path = os.path.join(path, year)
+    month_path = os.path.join(year_path, month)
+
+    baseline_df = pd.read_csv(os.path.join(
+        month_path, str(PROSUMER_NO) + ".csv"))
+    baseline_df['timestamp'] = pd.to_datetime(
+        baseline_df['timestamp'], unit='s')
+    dt = datetime.datetime(year=int(year), month=int(month), day=int(day))
+    start = pd.to_datetime(calendar.timegm(dt.timetuple()), unit='s')
+    dt = datetime.datetime(year=int(year), month=int(month), day=int(day) + 1)
+    stop = pd.to_datetime(calendar.timegm(dt.timetuple()), unit='s')
+    baseline_df = baseline_df.loc[(baseline_df['timestamp'] >= start)
+                                  & (baseline_df['timestamp'] < stop)]
+    baseline_df = baseline_df.set_index('timestamp')
+    baseline_df = baseline_df.resample('%dS' % FREQ).ffill()
 
 
 async def getDowngradeDifference(appliance, program):
@@ -131,23 +172,27 @@ def findFile(task, program, appliance, task_file):
                     "in_use": True, "generatesPower": generates}
             else:
                 files = os.listdir(path)
-                files_no = len(files)
-                file_no = random.randint(0, files_no - 1)
-                filename = files[file_no]
+                if DYNAMIC:
+                    files_no = len(files)
+                    file_no = random.randint(0, files_no - 1)
+                    filename = files[file_no]
+                else:
+                    filename = files[0]
                 df = pd.read_csv(
                     os.path.join(path, filename))
+                df = df.iloc[::FREQ]
                 task_file[task["_id"]] = {
                     "data": df, "counter": 0, "in_use": True, "generatesPower": generates}
                 task["remainingTime"] = len(
                     task_file[task["_id"]]["data"].index)
         else:
             filename = datetime.date.fromtimestamp(
-                MIDNIGHT_TIMESTAMP).strftime('%Y%m%d') + ".csv"
+                START_TIMESTAMP - int(365.25 * 3600 * 24)).strftime('%Y%m%d') + ".csv"  # one year before
             df = pd.read_csv(
                 os.path.join(path, filename))
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             df = df.set_index('timestamp')
-            df = df.resample('1S').ffill()
+            df = df.resample('%dS' % FREQ).ffill()
             task_file[task["_id"]] = {
                 "data": df, "counter": 0, "in_use": True, "generatesPower": generates}
             task["remainingTime"] = len(
@@ -157,9 +202,17 @@ def findFile(task, program, appliance, task_file):
             "in_use": True, "generatesPower": generates}
 
 
+def send_baseline(values):
+    data = {'baseline': values}
+    requests.post(BACKEND_URL +
+                  "/register_baseline", data=data, headers=headers)
+    print("Registered baseline: ", values)
+
+
 async def tick():
     global time_counter
-    print("Tick! The time is: %s" % datetime.datetime.now())
+    start_tick = datetime.datetime.now()
+    print("Tick! The time is: %s" % start_tick)
 
     for task in task_file:
         if task_file[task] is not None:
@@ -167,14 +220,21 @@ async def tick():
 
     counter = None
     signal = None
+    desired_value = None
 
     db_signal = await mongodb[DR_DB].find().to_list(length=10)
+    print(db_signal)
     if len(db_signal) > 0:
         counter = db_signal[0]["counter"]
-        signal = db_signal[0]["values"]
+        signal = []
+        for i in db_signal[0]["values"]:
+            signal.append(float(i))
 
-    consume_value = background_df['value'][time_counter]
-    time_counter += 1
+    background_value = background_df['value'][time_counter]
+    consume_value = background_value
+    if time_counter % BATCH_SIZE == 0:
+        send_baseline(baseline_df['value']
+                      [time_counter:time_counter+BATCH_SIZE].values)
 
     db_tasks = await mongodb[TASKS_DB].find().to_list(length=1000)
     initial_states = {}
@@ -185,6 +245,8 @@ async def tick():
 
     appliances = {}
     programs = {}
+    appliances_dict = {}
+    batteries_dict = {}
 
     for task in db_tasks:
 
@@ -206,7 +268,7 @@ async def tick():
             else:
                 consume_value -= task["currentPower"]
 
-        # if DR signal exists, check compliance and modify tasks
+            appliances_dict[appliance["_id"]] = task["currentPower"]
 
     for battery in db_batteries:
         if battery["connected"] is True:
@@ -227,16 +289,25 @@ async def tick():
                 battery["currentRate"] = discharged
                 battery["currentCapacity"] += discharged
                 consume_value += discharged
+            batteries_dict[battery["_id"]] = {
+                "rate": battery["currentRate"], "capacity": battery["currentCapacity"]}
+
+    # if DR signal exists, check compliance and modify tasks
 
     if signal is not None:
         desired_value = signal[counter]
+
         print("Desired value ", desired_value)
+        print("Signal ", signal, counter)
         if counter + 1 == len(signal):
             _ = await mongodb[DR_DB].delete_one({"counter": counter})
         else:
             _ = await mongodb[DR_DB].update_one(
                 {"counter": counter}, {"$set": {"counter": counter + 1}}
             )
+
+        if not desired_value:
+            desired_value = 0
 
         check, current_diff = checksThreshold(
             consume_value, desired_value, THRESHOLD)
@@ -412,7 +483,7 @@ async def tick():
                 task["remainingTime"] -= 1
             if "data" in task_file[task["_id"]]:
                 task["currentPower"] = task_file[task["_id"]
-                                                 ]["data"].value[task_file[task["_id"]]["counter"]]
+                                                 ]["data"]["value"].values[task_file[task["_id"]]["counter"]]
                 task_file[task["_id"]]["counter"] += 1
                 if task_file[task["_id"]]["counter"] == len(
                         task_file[task["_id"]]["data"].index):
@@ -451,14 +522,29 @@ async def tick():
     for task in to_be_del:
         del task_file[task]
 
-    print("Consume:", consume_value, len(task_file))
-    print("Tock! The time is: %s" % datetime.datetime.now())
+    data['value'] = int(consume_value)
+    requests.post(BACKEND_URL +
+                  "/register_value", data=data, headers=headers)
+    print("Registered value: ", int(consume_value))
+
+    energyData = jsonable_encoder(EnergyData(ts=START_TIMESTAMP + time_counter * FREQ, total=consume_value, background=background_value,
+                                             appliances=appliances_dict, batteries=batteries_dict, current_dr=desired_value))
+    time_counter += 1
+    # print(energyData)
+    _ = mongodb[ENERGY_DATA_DB].insert_one(energyData)
+
+    stop_tick = datetime.datetime.now()
+    print("Tock! The time is: %s" % stop_tick)
+    print("Elapsed ", stop_tick - start_tick, " seconds.")
 
 
 def main():
+    time.sleep(30)
     read_background()
+    read_baseline()
+    generate_requests()
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(tick, "interval", seconds=2)
+    scheduler.add_job(tick, "interval", seconds=FREQ)
     scheduler.start()
 
     try:

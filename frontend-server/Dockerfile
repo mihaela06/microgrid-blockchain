@@ -1,11 +1,13 @@
-FROM python:3.9
+FROM node:alpine
 
-WORKDIR /code
+WORKDIR /app
 
-COPY ./requirements.txt /code/requirements.txt
+COPY package.json ./
 
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+COPY package-lock.json ./
 
-COPY . /code/app
+RUN npm install
 
-CMD ["python", "/code/app/server.py"]
+COPY ./ ./
+
+CMD ["npm", "run", "start"]

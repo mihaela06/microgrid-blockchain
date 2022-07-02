@@ -1,0 +1,5 @@
+--- 
+server.name: kibana 
+server.host: "10.13.105.1" 
+elasticsearch.hosts: [ "http://elastic_search:9200" ] 
+xpack.monitoring.ui.container.elasticsearch.enabled: true 

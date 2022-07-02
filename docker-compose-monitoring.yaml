@@ -1,0 +1,30 @@
+services:
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - prosumers-net
+    ports:
+      - 9090:9090
+  grafana:
+    image: grafana/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: root
+      GF_SECURITY_ADMIN_PASSWORD: password
+    ports:
+      - 3000:3000
+    links:
+      - prometheus
+    volumes:
+      - ./monitoring/grafana/defaults.ini:/etc/grafana/grafana.ini
+      - ./monitoring/grafana/prometheus_ds.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./monitoring/grafana/config-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboard.yaml
+      - ./monitoring/grafana/geth.json:/etc/grafana/jsons/geth.json
+    networks:
+      - prosumers-net
+
+networks:
+  prosumers-net:
+    external: true

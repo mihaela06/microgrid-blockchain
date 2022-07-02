@@ -3,6 +3,6 @@
     "id": 5,
     "method": "admin_addPeer",
     "params": [
-        "address_placeholder"
+        "enode_placeholder"
     ]
 }

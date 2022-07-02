@@ -11,7 +11,7 @@ services:
       --networkid=${NETWORK_ID}
       --netrestrict=${PROSUMERS_NET}
       --http 
-      --http.api db,eth,net,web3,admin,personal,miner,signer:insecure_unlock_protect
+      --http.api db,eth,clique,net,web3,admin,personal,miner,signer:insecure_unlock_protect
       --http.corsdomain="*" 
       --http.addr="0.0.0.0" 
       --http.vhosts=* 
@@ -23,14 +23,19 @@ services:
       --allow-insecure-unlock 
       --nat=extip:${GETH_IP}
       --vmodule=p2p=5,eth=1
+      --metrics 
+      --pprof 
+      --pprof.addr="0.0.0.0"
+      --vmdebug
+      --verbosity=4
+      --syncmode "full"
       --nodiscover
-      # --nodekey=node.key
     networks:
-      prosumer-subnet:
+      default:
       prosumers-net:
 
 networks:
-  prosumer-subnet:
+  default:
     driver: bridge
     ipam:
       config:

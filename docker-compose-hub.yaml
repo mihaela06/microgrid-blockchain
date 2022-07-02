@@ -12,6 +12,8 @@ services:
       test: test $$(echo "rs.initiate().ok || rs.status().ok" | mongo -u $${MONGO_INITDB_ROOT_USERNAME} -p $${MONGO_INITDB_ROOT_PASSWORD} --quiet) -eq 1
       interval: 10s
       start_period: 30s
+    expose:
+      - 27017
     command: "--bind_ip_all --keyFile /opt/keyfile/keyfile --replSet dbrs"
     volumes:
       - ./mongo/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
@@ -21,21 +23,93 @@ services:
     image: mongo-express
     restart: always
     ports:
-      - 8081:8081
+      - ${MONGO_EXPRESS_PORT}:8081
+    depends_on:
+      mongo:
+        condition: service_healthy
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
       ME_CONFIG_MONGODB_ADMINPASSWORD: password
-      ME_CONFIG_MONGODB_URL: mongodb://root:password@mongo:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://root:password@${MONGO_HOST}:27017/
+      ME_CONFIG_MONGODB_SERVER: ${MONGO_HOST}
 
   smart-hub:
     image: smart-hub
     restart: always
+    depends_on:
+      mongo:
+        condition: service_healthy
     ports:
-      - 8116:8000 
+      - ${SMART_HUB_PORT}:8000
+    build:
+      context: smart-hub
+    environment:
+      - MONGO_HOST=${MONGO_HOST}
+
+  data-stream:
+    image: data-stream
+    restart: always
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      - MONGO_HOST=${MONGO_HOST}
+    ports:
+      - ${DATA_STREAM_PORT}:8060
+    build:
+      context: data-stream
 
   frontend-server:
     image: frontend-server
     restart: always
+    environment:
+      - REACT_APP_SMART_HUB_HOST=${SMART_HUB_HOST}
+      - REACT_APP_SMART_HUB_PORT=${SMART_HUB_PORT}
+      - REACT_APP_DATA_STREAM_HOST=${DATA_STREAM_HOST}
+      - REACT_APP_DATA_STREAM_PORT=${DATA_STREAM_PORT}
+      - REACT_APP_HOST_IP=${HOST_IP}
+      - WDS_SOCKET_PORT=0
     ports:
-     - 8006:8006
-  
+      - ${FRONTEND_PORT}:3000
+    build:
+      context: frontend-server
+
+  simulation:
+    image: simulation
+    restart: always
+    environment:
+      - BACKEND_HOST=${BACKEND_HOST}
+      - MONGO_HOST=${MONGO_HOST}
+      - SMART_HUB_HOST=${SMART_HUB_HOST}
+      - PROSUMER_ID=${PROSUMER_ID}
+      - START_TIMESTAMP=${START_TIMESTAMP}
+      - DYNAMIC=${DYNAMIC}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    build:
+      context: simulation
+
+  backend-server:
+    image: backend-server
+    restart: always
+    environment:
+      - GETH_HOST=${GETH_HOST}
+      - SMART_HUB_HOST=${SMART_HUB_HOST}
+      - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
+    build:
+      context: backend-server
+
+  event-listener:
+    image: backend-server
+    restart: always
+    environment:
+      - GETH_HOST=${GETH_HOST}
+      - SMART_HUB_HOST=${SMART_HUB_HOST}
+      - GRID_CONTRACT=${GRID_CONTRACT}
+      - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
+    build:
+      context: backend-server
+    command: node event_subscription.js
+
+    
