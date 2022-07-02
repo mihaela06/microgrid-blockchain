@@ -8,6 +8,7 @@ simulation/__pycache__
 smart-hub/apps/__pycache__
 smart-hub/apps/smart_hub/__pycache__
 smart-hub/apps/smart_hub/routers/__pycache__
+smart-hub/config/__pycache__
 ex.py
 mongo/keyfile
 tmp
