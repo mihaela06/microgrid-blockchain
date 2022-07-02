@@ -91,7 +91,7 @@ function parse_params() {
         export readonly CONSENSUS='clique'
         ;;
       *)
-        script_exit "Invalid consensus algorithm was provided: $param" 1
+        script_exit "Invalid consensus algorithm was provided: $1. Accepting: ethash, clique." 1
         ;;
       esac
       shift
@@ -277,11 +277,13 @@ function create_prosumer_accounts() {
 
   verbose_print "Unlock accounts and start mining in each main account" $bg_blue$ta_bold
 
-  for acc in "${prosumer_accounts[@]}"; do
-    :
-    verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
-    curl_container_request "balance_node:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
-  done
+  if [[ $CONSENSUS == "clique"* ]]; then
+    for acc in "${prosumer_accounts[@]}"; do
+      :
+      verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
+      curl_container_request "balance_node:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
+    done
+  fi
 
   for ((i = 1; i <= prosumers_no; i++)); do
     curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/unlock_account.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]} password_placeholder parola
@@ -293,13 +295,14 @@ function create_prosumer_accounts() {
       verbose_print "Adding peer with enode ${enode} to prosumer${i}" $bg_blue$ta_bold
       curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/add_peer.json "${PROSUMERS_NET_NAME}" enode_placeholder $enode
     done
+    if [[ $CONSENSUS == "clique"* ]]; then
 
-    for acc in "${prosumer_accounts[@]}"; do
-      :
-      verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
-      curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
-    done
-
+      for acc in "${prosumer_accounts[@]}"; do
+        :
+        verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
+        curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
+      done
+    fi
   done
 }
 
@@ -379,10 +382,9 @@ function main() {
   script_init "$@"
   parse_params "$@"
   colour_init
-  # lock_init system
 
   docker_cleanup
-  # docker_logging
+  docker_logging
   docker_main_network
   docker_bootnode
   docker_prosumer_clusters
