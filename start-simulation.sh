@@ -40,9 +40,11 @@ EOF
 # ARGS: None
 # OUTS: Variables with default values set
 function set_defaults() {
-  prosumers_no=2
+  export PROSUMERS_NO=2
   export readonly PROSUMERS_NET="172.16.0.0/24"
   export readonly PROSUMERS_NET_NAME="prosumers-net"
+  export readonly CASSANDRA_NET="172.24.0.0/24"
+  export readonly CASSANDRA_NET_NAME="cassandra-net"
   export readonly NETWORK_ID=611
   export readonly HOST_IP="10.13.105.1"
   local prefix=${PROSUMERS_NET%%/*}
@@ -79,7 +81,7 @@ function parse_params() {
       no_colour=true
       ;;
     -p | --prosumers)
-      readonly prosumers_no=$1
+      export readonly PROSUMERS_NO=$1
       shift
       ;;
     -c | --consensus)
@@ -167,15 +169,6 @@ function docker_cleanup() {
   docker network rm $(docker network ls -q) 2>/dev/null
 }
 
-# DESC: Creating Docker logging services
-# ARGS: None
-# OUTS: None
-function docker_logging() {
-  docker-compose -f "${PWD}"/logging/docker-compose.yml -f "${PWD}"/logging/extensions/logspout/logspout-compose.yml up -d
-
-  return
-}
-
 # DESC: Creating Docker main network
 # ARGS: None
 # OUTS: None
@@ -185,6 +178,18 @@ function docker_main_network() {
   export PROSUMERS_NET
   export PROSUMERS_NET_NAME
   docker network create --subnet="${PROSUMERS_NET}" "$PROSUMERS_NET_NAME"
+  return
+}
+
+# DESC: Creating Docker Cassandra network
+# ARGS: None
+# OUTS: None
+function docker_cassandra_network() {
+  verbose_print "Creating Cassandra main network that will be interconnecting the Cassandra cluster" $bg_blue$ta_bold
+
+  export CASSANDRA_NET
+  export CASSANDRA_NET_NAME
+  docker network create --subnet="${CASSANDRA_NET}" "$CASSANDRA_NET_NAME"
   return
 }
 
@@ -212,7 +217,7 @@ function docker_bootnode() {
 function docker_prosumer_clusters() {
   verbose_print "Creating prosumer clusters with a Blockchain node each" $bg_blue$ta_bold
   # TODO create static-nodes.json file from output parsing
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     verbose_print "Adding prosumer #$i" $bg_blue$ta_bold
     export readonly PROSUMER_SUBNET="192.168.$i.0/28"
     export readonly GETH_IP="172.16.0.$(($i + 2))"
@@ -233,7 +238,7 @@ function docker_monitoring() {
 
   cp "$PWD"/monitoring/prometheus/prometheus-template.yml "$PWD"/monitoring/prometheus/prometheus.yml
 
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     export readonly GETH_HOSTNAME="prosumer${i}_geth_1:6060"
     echo -e "          - ${GETH_HOSTNAME}" >>"$PWD"/monitoring/prometheus/prometheus.yml
   done
@@ -241,20 +246,20 @@ function docker_monitoring() {
   docker-compose -f docker-compose-monitoring.yaml -p monitoring up -d --build
 }
 
-# DESC: Creating logging services
+# DESC: Creating Docker logging services
 # ARGS: None
 # OUTS: None
 function docker_logging() {
   verbose_print "Creating logging microservices" $bg_blue$ta_bold
 
-  docker-compose -f docker-compose-logging.yaml up -d --build
+  docker-compose -f "${PWD}"/logging/docker-compose.yml -f "${PWD}"/logging/extensions/logspout/logspout-compose.yml up -d
 }
 
 # DESC: Creating accounts for each prosumer with initial balance
 # ARGS: None
 # OUTS: None
 function create_prosumer_accounts() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     verbose_print "Creating prosumer #$i account" $bg_blue$ta_bold
     # TODO password management
     password="parola"
@@ -285,7 +290,7 @@ function create_prosumer_accounts() {
     done
   fi
 
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/unlock_account.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]} password_placeholder parola
     curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/set_etherbase.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]}
     curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/start_mining.json "${PROSUMERS_NET_NAME}"
@@ -330,21 +335,20 @@ function deploy_grid_balance_contract() {
 # ARGS: None
 # OUTS: None
 function deploy_prosumer_contract() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     MONGO_EXPRESS_PORT=8090
     SMART_HUB_PORT=8000
     DATA_STREAM_PORT=8060
     FRONTEND_PORT=8030
+    RABBIT_MQ_PORT=8110
 
     verbose_print "Deploying prosumer smart contract for prosumer  #$i" $bg_blue$ta_bold
 
-    # TODO replace smart-meter with smart-hub; add periodic post to backend;
-    # TODO important !!! parameterize simulation
-    # http://host_placeholder:5000
-
+    export readonly PROSUMER_SUBNET="192.168.$i.0/28"
     export BACKEND_HOST="prosumer${i}_backend-server_1"
     export GETH_HOST="prosumer${i}_geth_1"
     export MONGO_HOST="prosumer${i}_mongo_1"
+    export RABBIT_MQ_HOST="prosumer${i}_rabbitmq_1"
     export SMART_HUB_HOST="prosumer${i}_smart-hub_1"
     export DATA_STREAM_HOST="prosumer${i}_data-stream_1"
 
@@ -352,8 +356,12 @@ function deploy_prosumer_contract() {
     export SMART_HUB_PORT=$((SMART_HUB_PORT + i))
     export FRONTEND_PORT=$((FRONTEND_PORT + i))
     export DATA_STREAM_PORT=$((DATA_STREAM_PORT + i))
+    export RABBIT_MQ_PORT=$((RABBIT_MQ_PORT + i))
 
-    export PROSUMER_ID=${PROSUMERS_IDS[i]}
+    export PROSUMER_ID=${PROSUMERS_IDS[$((i - 1))]}
+    export PROSUMER_ACCOUNT=${prosumer_accounts[$((i - 1))]}
+
+    docker-compose -f docker-compose-cassandra.yaml -p prosumer"$i" up -d --build
 
     export PROSUMER_CONTRACT=$(docker run --network prosumer${i}_default -e GETH_HOST=${GETH_HOST} -e GRID_CONTRACT=${GRID_CONTRACT} --name prosumer${i}_prosumer_registration_1 backend-server node prosumer_registration.js)
     verbose_print "Prosumer registered with contract at address ${PROSUMER_CONTRACT}"
@@ -361,13 +369,15 @@ function deploy_prosumer_contract() {
     docker-compose -f docker-compose-hub.yaml -p prosumer"$i" up -d --build
     docker stop "prosumer${i}_simulation_1"
   done
+
+  docker run --rm --network ${CASSANDRA_NET_NAME} -v "${PWD}/cassandra/create.cql:/scripts/data.cql" -e CQLSH_HOST=prosumer1_cassandra_1 -e CQLSH_PORT=9042 -e CQLVERSION=3.4.5 nuvo/docker-cqlsh
 }
 
 # DESC: Start each prosumer simulation container
 # ARGS: None
 # OUTS: None
 function start_simulation() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     docker start "prosumer${i}_simulation_1"
   done
 }
@@ -386,6 +396,7 @@ function main() {
   docker_cleanup
   docker_logging
   docker_main_network
+  docker_cassandra_network
   docker_bootnode
   docker_prosumer_clusters
   docker_monitoring

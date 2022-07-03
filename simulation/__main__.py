@@ -6,13 +6,15 @@ import random
 import time
 
 import pandas as pd
+import pika
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi.encoders import jsonable_encoder
 from motor.motor_asyncio import AsyncIOMotorClient
+import hashlib
 
-from .config import (BATCH_SIZE, FREQ, START_TIMESTAMP, PROSUMER_NO,
-                     RANDOM_SEED, THRESHOLD, DYNAMIC)
+from .config import (BATCH_SIZE, DYNAMIC, FREQ, PROSUMER_NO, RANDOM_SEED,
+                     START_TIMESTAMP, THRESHOLD)
 from .generation import generate_requests
 from .models import (APPLIANCES_DB, BATTERIES_DB, DR_DB, ENERGY_DATA_DB,
                      PROGRAMS_DB, TASKS_DB, EnergyData, State)
@@ -44,6 +46,35 @@ data = dict()
 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
 
 BACKEND_URL = "http://" + os.environ.get("BACKEND_HOST") + ":5000"
+
+rabbit_message = None
+hash_index = 0
+hash_str = "s" * 64
+
+
+def send_hash():
+    if rabbit_message is not None:
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=os.environ.get('RABBIT_MQ_HOST')))
+        channel = connection.channel()
+        channel.basic_publish(exchange='',
+                              routing_key='data_queue',
+                              body=rabbit_message)
+        connection.close()
+
+
+def get_hash(timestamp, value):
+    global hash_index
+    global hash_str
+
+    concat = str(timestamp) + str(value) + hash_str
+
+    s = hashlib.sha3_256(concat.encode())
+
+    hash_str = s.hexdigest()
+    hash_index += 1
+    if hash_index == FREQ:
+        hash_index = 0
 
 
 def read_background():
@@ -525,6 +556,22 @@ async def tick():
     data['value'] = int(consume_value)
     requests.post(BACKEND_URL +
                   "/register_value", data=data, headers=headers)
+    get_hash((START_TIMESTAMP + time_counter * FREQ)*1000, int(consume_value))
+
+    global rabbit_message
+    rabbit_message = str((START_TIMESTAMP + time_counter * FREQ)*1000) + ";" + \
+        os.environ.get("PROSUMER_ACCOUNT") + ";" + \
+        hash_str + ";" + \
+        str(int(consume_value))
+
+    send_hash()
+
+    if hash_index == 0:
+        hash_data = {'hash': hash_str}
+        requests.post(BACKEND_URL +
+                      "/register_hash", data=hash_data, headers=headers)
+        print("Registered hash: ", hash_str)
+
     print("Registered value: ", int(consume_value))
 
     energyData = jsonable_encoder(EnergyData(ts=START_TIMESTAMP + time_counter * FREQ, total=consume_value, background=background_value,

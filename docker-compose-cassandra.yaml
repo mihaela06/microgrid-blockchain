@@ -1,0 +1,51 @@
+services:
+  cassandra:
+    image: cassandra
+    restart: always
+    environment:
+      - CASSANDRA_CLUSTER_NAME=cluster
+      - CASSANDRA_SEEDS=prosumer1_cassandra_1
+    networks:
+      cassandra-net:
+
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_USER: admin
+      RABBITMQ_PASSWORD: password
+    restart: always
+    ports:
+      - ${RABBIT_MQ_PORT}:15672
+    volumes:
+      - ./cassandra/rabbitmq/:/init/
+    entrypoint:
+      [
+        "bash",
+        "-c",
+        "sleep 3 && chmod +x /init/init.sh && /init/init.sh"
+      ]
+    networks:
+      default:
+
+
+  db-worker:
+    image: db-worker
+    build: cassandra/db-worker
+    restart: always
+    environment:
+      - NODES_NO=${PROSUMERS_NO}
+      - RABBIT_MQ_HOST=${RABBIT_MQ_HOST}
+    networks:
+      cassandra-net:
+      default:
+
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${PROSUMER_SUBNET}
+  cassandra-net:
+    external: true

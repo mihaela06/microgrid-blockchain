@@ -13,14 +13,14 @@ contract Prosumer {
     address private prosumerAddress;
 
     uint32 threshold;
-    int32[12] private registeredValues;
     int32[12] private DRSignal;
     int32[12] private baselineValues;
-    uint16 private registerIndex;
     uint16 private DRIndex;
     uint16 private baselineIndex;
     uint32 private DRLength;
     int32 private balance;
+    bytes32 private hash;
+
     event valueRegistered(address indexed prosumerAddress, int256 value);
     event registeredDRSignal(address indexed prosumerAddress, int32[12] DRSignal, uint32 DRLength);
     
@@ -33,7 +33,6 @@ contract Prosumer {
         gridBalanceContract = _gridBalanceContract;
         prosumerAddress = _prosumerAddress;
         threshold = _threshold;
-        registerIndex = 0;
         DRIndex = 0;
         DRLength = 0;
         baselineIndex = 0;
@@ -53,8 +52,6 @@ contract Prosumer {
     function registerValue(int32 value) external {        
         // require(prosumerAddress == msg.sender);
         
-        registeredValues[registerIndex] = value;
-        registerIndex = increaseIndex(registerIndex);
         emit valueRegistered(prosumerAddress, value);
 
         GridBalance gridContract = GridBalance(gridBalanceContract);
@@ -77,11 +74,6 @@ contract Prosumer {
         }
         gridContract.registerProsumerImbalance(diff);
         DRIndex = increaseIndex(DRIndex);
-    }
-
-    function getValue(uint16 _index) public view returns (int32) {
-        // require(prosumerAddress == msg.sender);
-        return registeredValues[_index];
     }
 
     function actualizeBaseline(int32[] calldata _baselineValues, uint16 _length) external {
@@ -107,5 +99,14 @@ contract Prosumer {
         }
         DRLength = _DRLength;
         emit registeredDRSignal(prosumerAddress, DRSignal, DRLength);
+    }
+
+    
+    function registerHash(bytes32 _hash) external {
+        hash = _hash;
+    }
+
+    function getHash() public view returns (bytes32) {
+        return hash;
     }
 }

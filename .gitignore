@@ -13,3 +13,5 @@ ex.py
 mongo/keyfile
 tmp
 monitoring/grafana/geth.json
+first-node/contract-deployer/build/
+backend-server/build/contracts/

@@ -1,0 +1,1 @@
+SELECT register_timestamp, hash, value FROM energy_data.registered_values WHERE account='0xc97ff3a8286f3a81b99cbb214b2548738b921280' ALLOW FILTERING;
