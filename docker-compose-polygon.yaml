@@ -1,0 +1,21 @@
+services:
+  polygon:
+    hostname: polygon
+    image: 0xpolygon/polygon-edge
+    volumes:
+      - ${NODE_DIR}:/node
+      - ${GENESIS_DIR}:/genesis
+    command: server --data-dir ./node --chain /genesis/genesis.json --libp2p 0.0.0.0:1478 --nat ${POLYGON_IP} --seal --prometheus :5001 --jsonrpc :8545
+    networks:
+      default:
+      prosumers-net:
+        ipv4_address: ${POLYGON_IP}
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${PROSUMER_SUBNET}
+  prosumers-net:
+    external: true

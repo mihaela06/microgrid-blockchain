@@ -13,3 +13,4 @@ ex.py
 mongo/keyfile
 tmp
 monitoring/grafana/geth.json
+polygon/node*

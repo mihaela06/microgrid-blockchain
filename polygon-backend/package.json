@@ -1,5 +1,5 @@
 {
-    "name": "backend-server",
+    "name": "polygon-backend",
     "version": "1.0.0",
     "description": "",
     "main": "server.js",
@@ -14,8 +14,9 @@
     "author": "Mihaela Mihaiu",
     "license": "ISC",
     "dependencies": {
-        "express": "^4.17.3",
         "web3": "^1.7.1",
-        "axios": "*"
+        "axios": "*",
+        "node-fetch": "2.6.7",
+        "express": "*"
     }
 }
