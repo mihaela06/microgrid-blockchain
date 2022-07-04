@@ -90,18 +90,19 @@ services:
     build:
       context: simulation
 
-  backend-server:
-    image: backend-server
+  geth-backend:
+    image: geth-backend
     restart: always
     environment:
       - GETH_HOST=${GETH_HOST}
       - SMART_HUB_HOST=${SMART_HUB_HOST}
       - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
     build:
-      context: backend-server
+      context: geth-backend
+    profiles: [ "ethereum" ]
 
-  event-listener:
-    image: backend-server
+  geth-listener:
+    image: geth-backend
     restart: always
     environment:
       - GETH_HOST=${GETH_HOST}
@@ -109,7 +110,33 @@ services:
       - GRID_CONTRACT=${GRID_CONTRACT}
       - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
     build:
-      context: backend-server
+      context: geth-backend
     command: node event_subscription.js
+    profiles: [ "ethereum" ]
 
-    
+  polygon-backend:
+    image: polygon-backend
+    restart: always
+    volumes:
+      - ${NODE_DIR}:/app/node
+    environment:
+      - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
+      - NODE_ID=${NODE_ID}
+    build:
+      context: polygon-backend
+    profiles: [ "polygon" ]
+
+  polygon-listener:
+    image: polygon-backend
+    restart: always
+    volumes:
+      - ${NODE_DIR}:/app/node
+    environment:
+      - NODE_ID=${NODE_ID}
+      - SMART_HUB_HOST=${SMART_HUB_HOST}
+      - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
+      - PROSUMER_ADDRESS=${PROSUMER_ADDRESS}
+    build:
+      context: polygon-backend
+    command: node scripts/event_subscription.js
+    profiles: [ "polygon" ]

@@ -31,7 +31,6 @@ eventSubscription = async () => {
             process.env.GRID_CONTRACT
         );
 
-
         const prosumerContract = new web3.eth.Contract(
             ProsumerContract.abi,
             process.env.PROSUMER_CONTRACT

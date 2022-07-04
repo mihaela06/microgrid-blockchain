@@ -32,6 +32,7 @@ Usage: $0 [-p <number>]
      -s|--static                Runs static, preconfigured simulation
      -t|--timestamp             Simulation start time (UNIX timestamp)
      -c|--consensus             Consensus algorithm (ethash, clique)
+     -b|--blockchain            Blockchain platform (ethereum, polygon)
     -nc|--no-colour             Disables colour output
 EOF
 }
@@ -40,7 +41,7 @@ EOF
 # ARGS: None
 # OUTS: Variables with default values set
 function set_defaults() {
-  prosumers_no=2
+  PROSUMERS_NO=2
   export readonly PROSUMERS_NET="172.16.0.0/24"
   export readonly PROSUMERS_NET_NAME="prosumers-net"
   export readonly NETWORK_ID=611
@@ -53,6 +54,7 @@ function set_defaults() {
   export readonly START_TIMESTAMP=1589500800
   export readonly DYNAMIC=true
   export readonly CONSENSUS=ethash
+  export readonly BLOCKCHAIN=ethereum
 }
 
 # DESC: Parameter parser
@@ -79,19 +81,28 @@ function parse_params() {
       no_colour=true
       ;;
     -p | --prosumers)
-      readonly prosumers_no=$1
+      readonly PROSUMERS_NO=$1
       shift
       ;;
     -c | --consensus)
       case "$1" in
       'ethash')
         export readonly CONSENSUS='ethash'
+        verbose_print "Platform Ethereum with consensus algorithm ethash was selected."
+        export readonly BLOCKCHAIN=ethereum
         ;;
       'clique')
         export readonly CONSENSUS='clique'
+        verbose_print "Platform Ethereum with consensus algorithm clique was selected."
+        export readonly BLOCKCHAIN=ethereum
+        ;;
+      'ibft')
+        export readonly CONSENSUS='ibft'
+        verbose_print "Platform Polygon with consensus algorithm IBFT was selected."
+        export readonly BLOCKCHAIN=polygon
         ;;
       *)
-        script_exit "Invalid consensus algorithm was provided: $1. Accepting: ethash, clique." 1
+        script_exit "Invalid consensus algorithm was provided: $1. Accepting: ethash, clique, ibft." 1
         ;;
       esac
       shift
@@ -171,6 +182,8 @@ function docker_cleanup() {
 # ARGS: None
 # OUTS: None
 function docker_logging() {
+  verbose_print "Creating Docker logging services" $bg_blue$ta_bold
+
   docker-compose -f "${PWD}"/logging/docker-compose.yml -f "${PWD}"/logging/extensions/logspout/logspout-compose.yml up -d
 
   return
@@ -192,6 +205,10 @@ function docker_main_network() {
 # ARGS: None
 # OUTS: None
 function docker_bootnode() {
+  if [[ $BLOCKCHAIN == "polygon"* ]]; then
+    return
+  fi
+
   verbose_print "Creating Blockchain bootnode" $bg_blue$ta_bold
 
   cp "${PWD}/first-node/bootnode/genesis ${CONSENSUS}.json" "${PWD}/first-node/bootnode/genesis.json"
@@ -206,18 +223,81 @@ function docker_bootnode() {
   docker container run --name balance_node --network "$PROSUMERS_NET_NAME" -d bootnode
 }
 
-# DESC: Creating prosumer clusters
+# DESC: Creating Geth prosumer clusters
 # ARGS: None
 # OUTS: None
-function docker_prosumer_clusters() {
-  verbose_print "Creating prosumer clusters with a Blockchain node each" $bg_blue$ta_bold
-  # TODO create static-nodes.json file from output parsing
-  for ((i = 1; i <= prosumers_no; i++)); do
+function geth_prosumer_clusters() {
+  verbose_print "Creating prosumer clusters with a Geth node each" $bg_blue$ta_bold
+
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     verbose_print "Adding prosumer #$i" $bg_blue$ta_bold
     export readonly PROSUMER_SUBNET="192.168.$i.0/28"
     export readonly GETH_IP="172.16.0.$(($i + 2))"
     docker-compose -f docker-compose-geth.yaml -p prosumer"$i" up -d --build
   done
+}
+
+# DESC: Creating Polygon prosumer clusters
+# ARGS: None
+# OUTS: None
+function polygon_prosumer_clusters() {
+  verbose_print "Creating prosumer clusters with a Polygon node each" $bg_blue$ta_bold
+
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
+    :
+    sudo rm -rf polygon/node${i}
+    mkdir polygon/node${i}
+    output=$(docker run --rm -v ${PWD}/polygon/node${i}:/node${i} 0xpolygon/polygon-edge secrets init --data-dir /node${i})
+    public_key=$(echo ${output} | egrep '0x([a-fA-F0-9]){40}' -o)
+    public_keys+=(${public_key})
+    echo -n $public_key >>polygon/node${i}/public_address.txt
+    node_id=($(echo ${output} | egrep '([a-zA-Z0-9]){53}' -o))
+    node_ids+=(${node_id})
+    bootnodes+=("/ip4/172.16.0."$((i + 2))"/tcp/1478/p2p/${node_id}")
+    sudo chmod -R +r polygon/node${i}
+  done
+
+  rm -rf polygon/genesis
+  mkdir -p polygon/genesis
+  command="docker run --rm -v ${PWD}/polygon/genesis:/genesis 0xpolygon/polygon-edge genesis --dir /genesis/genesis.json --block-gas-limit 1000000000 --consensus ibft "
+
+  for public_key in "${public_keys[@]}"; do
+    :
+    command+="--ibft-validator=${public_key} "
+  done
+
+  for bootnode in "${bootnodes[@]}"; do
+    :
+    command+="--bootnode ${bootnode} "
+  done
+
+  for public_key in "${public_keys[@]}"; do
+    :
+    command+="--premine=${public_key}:1000000000000000000000 "
+  done
+
+  eval "${command}"
+
+  export readonly GENESIS_DIR=${PWD}/polygon/genesis
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
+    :
+    verbose_print "Adding prosumer #$i" $bg_blue$ta_bold
+    export readonly POLYGON_IP="172.16.0.$(($i + 2))"
+    export readonly PROSUMER_SUBNET="192.168.$i.0/28"
+    export readonly NODE_DIR=${PWD}/polygon/node${i}
+    docker-compose -f docker-compose-polygon.yaml -p prosumer"$i" up -d --build
+  done
+}
+
+# DESC: Creating prosumer clusters
+# ARGS: None
+# OUTS: None
+function docker_prosumer_clusters() {
+  if [[ $BLOCKCHAIN == "polygon"* ]]; then
+    polygon_prosumer_clusters
+  else
+    geth_prosumer_clusters
+  fi
 }
 
 # DESC: Creating monitoring services
@@ -233,34 +313,33 @@ function docker_monitoring() {
 
   cp "$PWD"/monitoring/prometheus/prometheus-template.yml "$PWD"/monitoring/prometheus/prometheus.yml
 
-  for ((i = 1; i <= prosumers_no; i++)); do
-    export readonly GETH_HOSTNAME="prosumer${i}_geth_1:6060"
-    echo -e "          - ${GETH_HOSTNAME}" >>"$PWD"/monitoring/prometheus/prometheus.yml
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
+    if [[ $BLOCKCHAIN == "polygon"* ]]; then
+      export readonly HOSTNAME="prosumer${i}_polygon_1:5001"
+    else
+      export readonly HOSTNAME="prosumer${i}_geth_1:6060"
+    fi
+    echo -e "          - ${HOSTNAME}" >>"$PWD"/monitoring/prometheus/prometheus.yml
   done
 
   docker-compose -f docker-compose-monitoring.yaml -p monitoring up -d --build
-}
-
-# DESC: Creating logging services
-# ARGS: None
-# OUTS: None
-function docker_logging() {
-  verbose_print "Creating logging microservices" $bg_blue$ta_bold
-
-  docker-compose -f docker-compose-logging.yaml up -d --build
 }
 
 # DESC: Creating accounts for each prosumer with initial balance
 # ARGS: None
 # OUTS: None
 function create_prosumer_accounts() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  if [[ $BLOCKCHAIN == "polygon"* ]]; then
+    return
+  fi
+
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     verbose_print "Creating prosumer #$i account" $bg_blue$ta_bold
     # TODO password management
     password="parola"
     host=$"prosumer${i}_geth_1:8545"
-    new_account=$(curl_container_request "$host" "./backend-server/requests/create_account.json" "$PROSUMERS_NET_NAME" | grep "0x[a-zA-Z0-9]*" -o)
-    new_enode=$(curl_container_request "$host" "./backend-server/requests/node_info.json" "$PROSUMERS_NET_NAME" | egrep "enr:-([a-zA-Z_0-9]*-?)*" -o)
+    new_account=$(curl_container_request "$host" "./geth-backend/requests/create_account.json" "$PROSUMERS_NET_NAME" | grep "0x[a-zA-Z0-9]*" -o)
+    new_enode=$(curl_container_request "$host" "./geth-backend/requests/node_info.json" "$PROSUMERS_NET_NAME" | egrep "enr:-([a-zA-Z_0-9]*-?)*" -o)
     verbose_print "Created prosumer #$i account $new_account" $bg_blue$ta_bold
     verbose_print "New enode at $new_enode" $bg_blue$ta_bold
     prosumer_accounts+=($new_account)
@@ -271,7 +350,7 @@ function create_prosumer_accounts() {
     :
     verbose_print "Sending initial balance to prosumer account $acc" $bg_blue$ta_bold
 
-    curl_container_request balance_node:8545 ./backend-server/requests/send_tokens.json $PROSUMERS_NET_NAME from_placeholder $balance_address to_placeholder $acc value_placeholder 0x100000000000000000000
+    curl_container_request balance_node:8545 ./geth-backend/requests/send_tokens.json $PROSUMERS_NET_NAME from_placeholder $balance_address to_placeholder $acc value_placeholder 0x100000000000000000000
 
   done
 
@@ -281,35 +360,35 @@ function create_prosumer_accounts() {
     for acc in "${prosumer_accounts[@]}"; do
       :
       verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
-      curl_container_request "balance_node:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
+      curl_container_request "balance_node:8545" ./geth-backend/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
     done
   fi
 
-  for ((i = 1; i <= prosumers_no; i++)); do
-    curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/unlock_account.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]} password_placeholder parola
-    curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/set_etherbase.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]}
-    curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/start_mining.json "${PROSUMERS_NET_NAME}"
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
+    curl_container_request "prosumer${i}_geth_1:8545" ./geth-backend/requests/unlock_account.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]} password_placeholder parola
+    curl_container_request "prosumer${i}_geth_1:8545" ./geth-backend/requests/set_etherbase.json "${PROSUMERS_NET_NAME}" address_placeholder ${prosumer_accounts[$((i - 1))]}
+    curl_container_request "prosumer${i}_geth_1:8545" ./geth-backend/requests/start_mining.json "${PROSUMERS_NET_NAME}"
 
     for enode in "${prosumer_enodes[@]}"; do
       :
       verbose_print "Adding peer with enode ${enode} to prosumer${i}" $bg_blue$ta_bold
-      curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/add_peer.json "${PROSUMERS_NET_NAME}" enode_placeholder $enode
+      curl_container_request "prosumer${i}_geth_1:8545" ./geth-backend/requests/add_peer.json "${PROSUMERS_NET_NAME}" enode_placeholder $enode
     done
     if [[ $CONSENSUS == "clique"* ]]; then
 
       for acc in "${prosumer_accounts[@]}"; do
         :
         verbose_print "Proposing account $acc as signer" $bg_blue$ta_bold
-        curl_container_request "prosumer${i}_geth_1:8545" ./backend-server/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
+        curl_container_request "prosumer${i}_geth_1:8545" ./geth-backend/requests/add_signer.json "${PROSUMERS_NET_NAME}" address_placeholder $acc
       done
     fi
   done
 }
 
-# DESC: Deploy the grid balance smart contract from the bootnode
+# DESC: Deploy the grid balance smart contract to the Ethereum blockchain
 # ARGS: None
 # OUTS: None
-function deploy_grid_balance_contract() {
+function geth_deploy_grid_balance_contract() {
   verbose_print "Deploying grid balance smart contract" $bg_blue$ta_bold
 
   docker build first-node/contract-deployer -t contract-deployer
@@ -322,15 +401,38 @@ function deploy_grid_balance_contract() {
 
   verbose_print "Deployed grid contract at address" $GRID_CONTRACT
 
-  cp -r "${PWD}"/first-node/contract-deployer/build/contracts/ "${PWD}"/backend-server/build/
+  cp -r "${PWD}"/first-node/contract-deployer/build/contracts/ "${PWD}"/geth-backend/build/
+}
 
+# DESC: Deploy the grid balance smart contract to the Polygon blockchain
+# ARGS: None
+# OUTS: None
+function polygon_deploy_grid_balance_contract() {
+  verbose_print "Deploying grid balance smart contract" $bg_blue$ta_bold
+
+  docker build polygon-backend/ -t polygon-backend
+
+  GRID_CONTRACT=$(docker container run --rm --name polygon-deployer -v "$PWD"/polygon:/app/nodes -v "$PWD"/polygon-backend/scripts:/app/scripts -v "$PWD"/first-node/contract-deployer/build/contracts:/app/contracts --network "$PROSUMERS_NET_NAME" -e NODE_ID=1 polygon-backend node scripts/deploy_contract.js)
+
+  export readonly GRID_CONTRACT
+}
+
+# DESC: Deploy the grid balance smart contract from the bootnode
+# ARGS: None
+# OUTS: None
+function deploy_grid_balance_contract() {
+  if [[ $BLOCKCHAIN == "polygon"* ]]; then
+    polygon_deploy_grid_balance_contract
+  else
+    geth_deploy_grid_balance_contract
+  fi
 }
 
 # DESC: Register each prosumer in microgrid through contract deployment
 # ARGS: None
 # OUTS: None
 function deploy_prosumer_contract() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     MONGO_EXPRESS_PORT=8090
     SMART_HUB_PORT=8000
     DATA_STREAM_PORT=8060
@@ -338,15 +440,11 @@ function deploy_prosumer_contract() {
 
     verbose_print "Deploying prosumer smart contract for prosumer  #$i" $bg_blue$ta_bold
 
-    # TODO replace smart-meter with smart-hub; add periodic post to backend;
-    # TODO important !!! parameterize simulation
-    # http://host_placeholder:5000
-
-    export BACKEND_HOST="prosumer${i}_backend-server_1"
     export GETH_HOST="prosumer${i}_geth_1"
     export MONGO_HOST="prosumer${i}_mongo_1"
     export SMART_HUB_HOST="prosumer${i}_smart-hub_1"
     export DATA_STREAM_HOST="prosumer${i}_data-stream_1"
+    export NODE_ID=${i}
 
     export MONGO_EXPRESS_PORT=$((MONGO_EXPRESS_PORT + i))
     export SMART_HUB_PORT=$((SMART_HUB_PORT + i))
@@ -355,11 +453,24 @@ function deploy_prosumer_contract() {
 
     export PROSUMER_ID=${PROSUMERS_IDS[i]}
 
-    export PROSUMER_CONTRACT=$(docker run --network prosumer${i}_default -e GETH_HOST=${GETH_HOST} -e GRID_CONTRACT=${GRID_CONTRACT} --name prosumer${i}_prosumer_registration_1 backend-server node prosumer_registration.js)
+    if [[ $BLOCKCHAIN == "polygon"* ]]; then
+      
+      export BACKEND_HOST="prosumer${i}_polygon-backend_1"
+      export PROSUMER_CONTRACT=$(docker container run --rm --name prosumer${i}_prosumer_registration_1 -v "$PWD"/polygon:/app/nodes -v "$PWD"/polygon-backend/scripts:/app/scripts -v "$PWD"/first-node/contract-deployer/build/contracts:/app/contracts --network "$PROSUMERS_NET_NAME" -e NODE_ID=${NODE_ID} -e PROSUMER_THRESHOLD=10 -e GRID_CONTRACT=${GRID_CONTRACT} polygon-backend node scripts/register_prosumer.js)
+
+    else
+      
+      export BACKEND_HOST="prosumer${i}_geth-backend_1"
+      export PROSUMER_CONTRACT=$(docker run --network prosumer${i}_default -e GETH_HOST=${GETH_HOST} -e GRID_CONTRACT=${GRID_CONTRACT} -e NODE_ID=${i} --name prosumer${i}_prosumer_registration_1 geth-backend node prosumer_registration.js)
+
+    fi
+
     verbose_print "Prosumer registered with contract at address ${PROSUMER_CONTRACT}"
 
-    docker-compose -f docker-compose-hub.yaml -p prosumer"$i" up -d --build
+    docker-compose -f docker-compose-hub.yaml -p prosumer"$i" --profile ${BLOCKCHAIN} up -d --build
+
     docker stop "prosumer${i}_simulation_1"
+
   done
 }
 
@@ -367,7 +478,7 @@ function deploy_prosumer_contract() {
 # ARGS: None
 # OUTS: None
 function start_simulation() {
-  for ((i = 1; i <= prosumers_no; i++)); do
+  for ((i = 1; i <= PROSUMERS_NO; i++)); do
     docker start "prosumer${i}_simulation_1"
   done
 }
