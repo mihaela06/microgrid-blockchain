@@ -53,7 +53,8 @@ app.post("/register_value", (req, res) => {
                 }
                 , [String(req.body.value)]);
 
-            web3.eth.getTransactionCount(addressFrom).then((txnCount) => {
+            web3.eth.getTransactionCount(addressFrom, "pending").then((txnCount) => {
+                console.log(txnCount)
                 var txObject = {
                     to: prosumerContractAddress,
                     nonce: web3.utils.numberToHex(txnCount),
@@ -117,7 +118,7 @@ app.post("/register_baseline", (req, res) => {
                 }
                 , [baseline, baseline.length]);
 
-            web3.eth.getTransactionCount(addressFrom).then((txnCount) => {
+            web3.eth.getTransactionCount(addressFrom, "pending").then((txnCount) => {
                 var txObject = {
                     to: prosumerContractAddress,
                     nonce: web3.utils.numberToHex(txnCount),

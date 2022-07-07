@@ -135,7 +135,6 @@ services:
       - NODE_ID=${NODE_ID}
       - SMART_HUB_HOST=${SMART_HUB_HOST}
       - PROSUMER_CONTRACT=${PROSUMER_CONTRACT}
-      - PROSUMER_ADDRESS=${PROSUMER_ADDRESS}
     build:
       context: polygon-backend
     command: node scripts/event_subscription.js

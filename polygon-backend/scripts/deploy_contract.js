@@ -27,7 +27,7 @@ const custom = Common.forCustomChain(
     'petersburg',
 );
 
-web3.eth.getTransactionCount(addressFrom).then((txnCount) => {
+web3.eth.getTransactionCount(addressFrom, "pending").then((txnCount) => {
     var txObject = {
         nonce: web3.utils.numberToHex(txnCount),
         gasPrice: web3.utils.numberToHex(1000),

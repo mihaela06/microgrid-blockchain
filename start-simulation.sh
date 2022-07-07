@@ -184,7 +184,7 @@ function docker_cleanup() {
 function docker_logging() {
   verbose_print "Creating Docker logging services" $bg_blue$ta_bold
 
-  docker-compose -f "${PWD}"/logging/docker-compose.yml -f "${PWD}"/logging/extensions/logspout/logspout-compose.yml up -d
+  docker-compose -f "${PWD}"/logging/docker-compose.yml -f "${PWD}"/logging/extensions/logspout/logspout-compose.yml --log-level ERROR up -d
 
   return
 }
@@ -231,9 +231,12 @@ function geth_prosumer_clusters() {
 
   for ((i = 1; i <= PROSUMERS_NO; i++)); do
     verbose_print "Adding prosumer #$i" $bg_blue$ta_bold
+    sudo rm -rf ${PWD}/geth/node${i}
+    mkdir ${PWD}/geth/node${i}
     export readonly PROSUMER_SUBNET="192.168.$i.0/28"
     export readonly GETH_IP="172.16.0.$(($i + 2))"
-    docker-compose -f docker-compose-geth.yaml -p prosumer"$i" up -d --build
+    export readonly NODE_DIR=${PWD}/geth/node${i}
+    docker-compose -f docker-compose-geth.yaml -p prosumer"$i"  up -d --build
   done
 }
 
@@ -285,7 +288,7 @@ function polygon_prosumer_clusters() {
     export readonly POLYGON_IP="172.16.0.$(($i + 2))"
     export readonly PROSUMER_SUBNET="192.168.$i.0/28"
     export readonly NODE_DIR=${PWD}/polygon/node${i}
-    docker-compose -f docker-compose-polygon.yaml -p prosumer"$i" up -d --build
+    docker-compose -f docker-compose-polygon.yaml -p prosumer"$i" --log-level ERROR up -d --build
   done
 }
 
@@ -309,7 +312,7 @@ function docker_monitoring() {
   wget https://grafana.com/api/dashboards/14053/revisions/1/download -O "$PWD"/monitoring/grafana/geth.json
 
   sed -i "s/\${DS_PROMETHEUS}/Prometheus/" "$PWD"/monitoring/grafana/geth.json
-  sed -i "s/\${VAR_JOB}/geth/" "$PWD"/monitoring/grafana/geth.json
+  sed -i "s/\${VAR_JOB}/blockchain/" "$PWD"/monitoring/grafana/geth.json
 
   cp "$PWD"/monitoring/prometheus/prometheus-template.yml "$PWD"/monitoring/prometheus/prometheus.yml
 
@@ -322,7 +325,7 @@ function docker_monitoring() {
     echo -e "          - ${HOSTNAME}" >>"$PWD"/monitoring/prometheus/prometheus.yml
   done
 
-  docker-compose -f docker-compose-monitoring.yaml -p monitoring up -d --build
+  docker-compose -f docker-compose-monitoring.yaml -p monitoring --log-level ERROR up -d --build
 }
 
 # DESC: Creating accounts for each prosumer with initial balance
@@ -467,7 +470,7 @@ function deploy_prosumer_contract() {
 
     verbose_print "Prosumer registered with contract at address ${PROSUMER_CONTRACT}"
 
-    docker-compose -f docker-compose-hub.yaml -p prosumer"$i" --profile ${BLOCKCHAIN} up -d --build
+    docker-compose -f docker-compose-hub.yaml -p prosumer"$i" --profile ${BLOCKCHAIN} --log-level ERROR up -d --build
 
     docker stop "prosumer${i}_simulation_1"
 
@@ -495,7 +498,7 @@ function main() {
   colour_init
 
   docker_cleanup
-  docker_logging
+  # docker_logging
   docker_main_network
   docker_bootnode
   docker_prosumer_clusters

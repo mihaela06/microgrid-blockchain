@@ -48,7 +48,7 @@ var functionArgs = web3.eth.abi.encodeFunctionCall(
     }
     , [String(process.env.PROSUMER_THRESHOLD)])
 
-web3.eth.getTransactionCount(addressFrom).then((txnCount) => {
+web3.eth.getTransactionCount(addressFrom, "pending").then((txnCount) => {
     var txObject = {
         to: process.env.GRID_CONTRACT,
         nonce: web3.utils.numberToHex(txnCount),

@@ -3,16 +3,19 @@
     "genesis": {
         "nonce": "0x0000000000000000",
         "timestamp": "0x0",
-        "extraData": "0x0000000000000000000000000000000000000000000000000000000000000000edea94ddc14f7ed6e4a7bc03524e7cea0ad6d1caaee94994868b8dbbe83404d694a0269150bbc8eedbf9911d80c0",
+        "extraData": "0x0000000000000000000000000000000000000000000000000000000000000000f843f83f94f5af87c338478fa66c98bd735c90eda806aca1b594fc2aca8840b428661b6b69e806f8b9249372b67d9434fd613a0e95fd81f4c411670c9fa97ce765068b80c0",
         "gasLimit": "0x3b9aca00",
         "difficulty": "0x1",
         "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
         "coinbase": "0x0000000000000000000000000000000000000000",
         "alloc": {
-            "0x868b8dBBe83404D694A0269150BbC8eedBF9911d": {
+            "0x34Fd613a0e95FD81F4c411670C9fa97cE765068b": {
                 "balance": "0x3635c9adc5dea00000"
             },
-            "0xdDc14f7Ed6e4A7Bc03524E7CEa0AD6D1caAEe949": {
+            "0xf5Af87c338478FA66C98Bd735c90Eda806aca1b5": {
+                "balance": "0x3635c9adc5dea00000"
+            },
+            "0xfC2aCa8840B428661b6B69e806f8b9249372B67d": {
                 "balance": "0x3635c9adc5dea00000"
             }
         },
@@ -41,7 +44,8 @@
         "blockGasTarget": 0
     },
     "bootnodes": [
-        "/ip4/172.16.0.3/tcp/1478/p2p/16Uiu2HAkzZ53d7gxyKN1LrDf5sfBiuvrSRDrr7ceZAV6mdzYitnY",
-        "/ip4/172.16.0.4/tcp/1478/p2p/16Uiu2HAkze7yTGUh9ZmbSinjR1PvLLjEs6zUWhAGvce1XAewbppp"
+        "/ip4/172.16.0.3/tcp/1478/p2p/16Uiu2HAm7yB1JQG4RLutiAdNyR4Ng4YYBSmGn5zx7u678dkvC1Fy",
+        "/ip4/172.16.0.4/tcp/1478/p2p/16Uiu2HAmM2fZ7btH83gw5GEkAKCdCBTQD1Xj5BQ2KYTBbBLpLWnz",
+        "/ip4/172.16.0.5/tcp/1478/p2p/16Uiu2HAm6dMVoPzkz4js2XapPe7eMA7xZC9aavy5w4U6K8KbWtdD"
     ]
 }

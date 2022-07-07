@@ -16,14 +16,6 @@ scrape_configs:
     scheme: http
     static_configs:
       - targets:
-
-# TODO
-  - job_name: polynet
-    scrape_interval: 15s
-    scrape_timeout: 10s
-    metrics_path: /metrics
-    scheme: http
-    static_configs:
-      - targets:
-          - prosumer1_polygon_1:5001          - prosumer1_polygon_1:5001
+          - prosumer1_polygon_1:5001
           - prosumer2_polygon_1:5001
+          - prosumer3_polygon_1:5001

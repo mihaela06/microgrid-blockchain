@@ -1914,12 +1914,12 @@
     "611": {
       "events": {},
       "links": {},
-      "address": "0xA8284eddD973F994cecEcc15942548B4d724789A",
-      "transactionHash": "0x5e4a41a75fdb3b37cc9aa48de9695455d4d3fa559de9f225849d765b22469505"
+      "address": "0x572A2Bb7e5c60b5Abddf8f0b76De57813B3a4FA0",
+      "transactionHash": "0x71c93408eb86ea6d43bfabfef05430e611a35536cf5cbfa914ef814d2ad4b5c7"
     }
   },
   "schemaVersion": "3.4.7",
-  "updatedAt": "2022-07-02T14:09:04.094Z",
+  "updatedAt": "2022-07-07T17:24:48.056Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
